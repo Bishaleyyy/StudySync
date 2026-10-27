@@ -111,7 +111,7 @@ st.markdown('<div class="page-title"><h1>Plan Generator</h1><p>Enter your subjec
 n = int(st.number_input("How many subjects?", min_value=1, value=3, step=1))
 
 with st.form("student_form"):
-    total_hours = st.slider("Study hours available per day", 1, 6, 5,
+    total_hours = st.slider("Study hours available per day", 1, 24, 5,
                             help="Hours you can study EACH day. Used as the Study_Hours_Available feature and split across subjects every day until their exams.")
     subjects = []
     for i in range(n):
