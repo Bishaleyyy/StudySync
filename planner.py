@@ -53,3 +53,42 @@ def print_study_plan(plan, subject_priorities):
         print(f"  {subject:<10} | Priority: {subject_priorities[subject]:<6} | Study Time: {hours} hrs")
     print(f"  {'TOTAL':<10} | {'':<16} | Study Time: {round(sum(plan.values()), 2)} hrs")
     print("====================================\n")
+
+
+def generate_multi_day_plan(subject_priorities, days_left, hours_per_day):
+    """
+    Day-by-day schedule from today until the last exam.
+
+    subject_priorities: {"DAA": "High", ...}
+    days_left:          {"DAA": 10, ...}  (days of study left for each subject)
+    hours_per_day:      hours available EVERY day
+
+    Rules (documented assumptions):
+      - Day 1 is today. The schedule runs for max(days_left) days.
+      - A subject is studied only on days 1..days_left[subject].
+      - Each day, the full hours_per_day is split between the subjects still
+        active that day, using the same High/Medium/Low weights as above.
+
+    Returns: list of dicts, one per day: [{"DAA": 1.67, ...}, ...]
+    """
+    if not subject_priorities:
+        return []
+    if set(days_left) != set(subject_priorities):
+        raise ValueError("days_left must have the same subjects as subject_priorities")
+    if any(d < 1 for d in days_left.values()):
+        raise ValueError("days_left must be at least 1 for every subject")
+
+    schedule = []
+    for day in range(1, max(days_left.values()) + 1):
+        active = {s: p for s, p in subject_priorities.items() if days_left[s] >= day}
+        schedule.append(generate_study_plan(active, hours_per_day))
+    return schedule
+
+
+def total_hours_per_subject(schedule):
+    """Sum each subject's hours over the whole schedule."""
+    totals = {}
+    for day_plan in schedule:
+        for subject, hrs in day_plan.items():
+            totals[subject] = round(totals.get(subject, 0) + hrs, 2)
+    return totals

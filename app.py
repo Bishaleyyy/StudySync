@@ -12,7 +12,7 @@ import streamlit as st
 import torch
 
 from model import StudySyncDNN
-from planner import generate_study_plan
+from planner import generate_multi_day_plan, total_hours_per_subject
 from preprocessing import DIFFICULTY_MAP, PRIORITY_MAP_INV, scale_new_sample
 
 BASE = Path(__file__).resolve().parent
@@ -111,8 +111,8 @@ st.markdown('<div class="page-title"><h1>Plan Generator</h1><p>Enter your subjec
 n = int(st.number_input("How many subjects?", min_value=1, value=3, step=1))
 
 with st.form("student_form"):
-    total_hours = st.slider("Study hours available today", 1, 6, 5,
-                            help="Used as the Study_Hours_Available feature and as the planner's total hours.")
+    total_hours = st.slider("Study hours available per day", 1, 6, 5,
+                            help="Hours you can study EACH day. Used as the Study_Hours_Available feature and split across subjects every day until their exams.")
     subjects = []
     for i in range(n):
         d = DEFAULTS[i] if i < len(DEFAULTS) else (f"Subject {i + 1}", 60, 75, 65, "Medium", 10)
@@ -140,8 +140,11 @@ if submitted:
         # Feature order must match FEATURE_COLUMNS in preprocessing.py
         row = [total_hours, marks, att, asg, DIFFICULTY_MAP[diff], days]
         priorities[name], confidences[name] = predict(net, mean, std, row)
+    days_map = {s[0]: s[5] for s in subjects}
+    schedule = generate_multi_day_plan(priorities, days_map, total_hours)
     st.session_state["result"] = dict(priorities=priorities, confidences=confidences, total=total_hours,
-                                      plan=generate_study_plan(priorities, total_hours))
+                                      days=days_map, schedule=schedule, plan=schedule[0],
+                                      totals=total_hours_per_subject(schedule))
 
 # ---------------- Results ----------------
 r = st.session_state.get("result")
@@ -153,13 +156,22 @@ if r:
         with cols[i % len(cols)]:
             st.markdown(f'<div class="card"><div class="subject-name">{subject}</div>'
                         f'<div style="margin:8px 0 10px 0;">{badge(r["priorities"][subject])}</div>'
-                        f'<div class="hours">{hrs} hrs</div>'
+                        f'<div class="hours">{hrs} hrs today</div>'
+                        f'<div class="note">Total till exam: {r["totals"][subject]} hrs ({r["days"][subject]} days)</div>'
                         f'<div class="note">Model confidence: {r["confidences"][subject] * 100:.0f}%</div></div>',
                         unsafe_allow_html=True)
             st.write("")
     table = pd.DataFrame({"Subject": [s for s, _ in ordered], "Hours": [h for _, h in ordered],
                           "Priority": [r["priorities"][s] for s, _ in ordered]})
-    plan_chart(table, f"Today's study plan ({r['total']} hrs total)")
-    st.dataframe(table.rename(columns={"Hours": "Study time (hrs)"}), hide_index=True)
+    plan_chart(table, f"Today's study plan ({r['total']} hrs of {r['total']} hrs/day)")
+    detail = table.rename(columns={"Hours": "Today (hrs)"})
+    detail["Days left"] = [r["days"][s] for s in detail["Subject"]]
+    detail["Total till exam (hrs)"] = [r["totals"][s] for s in detail["Subject"]]
+    st.dataframe(detail, hide_index=True)
+    with st.expander(f"Day-by-day schedule ({len(r['schedule'])} days, {r['total']} hrs/day)"):
+        sched_df = pd.DataFrame(r["schedule"]).fillna(0.0)
+        sched_df.insert(0, "Day", [f"Day {i + 1}" for i in range(len(sched_df))])
+        sched_df["Day total"] = sched_df.drop(columns="Day").sum(axis=1).round(2)
+        st.dataframe(sched_df, hide_index=True)
 
 st.caption("StudySync · BSc. CSIT Neural Networks project")
